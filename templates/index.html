@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cloud Code Runner</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body data-lang="python">
+
+  <div class="bg-mesh">
+    <div class="blob blob-1"></div>
+    <div class="blob blob-2"></div>
+    <div class="blob blob-3"></div>
+    <div class="grid-overlay"></div>
+  </div>
+  <div class="owner-title">
+    NILESH PARDESHI'S COMPILER
+  </div>
+  <div class="page">
+
+    <div class="masthead">
+      <div class="eyebrow"><span class="dot"></span> live on ec2 &middot; us-east-1</div>
+      <h1>Cloud Code Runner</h1>
+      <p>Write Python or Java, run it on the server, and watch successful builds fly straight into S3.</p>
+    </div>
+
+    <div class="pipeline" id="pipeline">
+      <div class="stage" id="stage-execute"><span class="num">1</span> Execute</div>
+      <span class="arrow">&#8594;</span>
+      <div class="stage" id="stage-verify"><span class="num">2</span> Verify</div>
+      <span class="arrow">&#8594;</span>
+      <div class="stage" id="stage-persist"><span class="num">3</span> Persist</div>
+    </div>
+
+    <div class="terminal">
+      <div class="chrome">
+        <div class="chrome-left">
+          <div class="dots"><span></span><span></span><span></span></div>
+          <div class="chrome-title" id="chromeTitle">python3 &middot; script.py</div>
+        </div>
+        <div class="chrome-right">
+          <div class="bucket-badge" id="bucketBadge">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7l9-4 9 4v10l-9 4-9-4V7z"/><path d="M3 7l9 4 9-4"/><path d="M12 11v10"/></svg>
+            <span id="bucketLabel">s3 bucket</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="body-pad">
+
+        <div class="tabs">
+          <button class="tab active" id="tabPython" onclick="setLanguage('python')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a6 6 0 0 0-6 6v2h6"/><path d="M12 22a6 6 0 0 0 6-6v-2h-6"/><circle cx="9" cy="6" r="0.8" fill="currentColor"/><circle cx="15" cy="18" r="0.8" fill="currentColor"/></svg>
+            Python
+          </button>
+          <button class="tab" id="tabJava" onclick="setLanguage('java')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 21c6 2 12 0 12-3-1 1-4 1-6 0"/><path d="M9 17c-3 1-4 3-1 4"/><path d="M12 3c2 2-3 4-1 7 1 1.5 0 3-1 4"/><path d="M9 10c-1 1 0 2 1 2"/></svg>
+            Java
+          </button>
+        </div>
+
+        <div class="editor-shell">
+          <div class="gutter" id="gutter">1</div>
+          <textarea id="code" spellcheck="false">print("Hello, world!")</textarea>
+        </div>
+
+        <div class="run-row">
+          <div class="hint">press <kbd>Run</kbd> to execute &middot; timeout 10s</div>
+          <button id="runBtn" onclick="runCode()">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+            Run code
+          </button>
+        </div>
+
+        <div id="resultBox" class="result">
+          <div class="result-head">
+            <div class="status-icon" id="statusIcon"></div>
+            <div class="status-text">
+              <div class="status-line" id="statusLine"></div>
+              <div class="status-sub" id="statusSub"></div>
+            </div>
+            <div class="beam-track" id="beamTrack">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg>
+              <span>stored to s3</span>
+            </div>
+          </div>
+          <pre id="outputBox"></pre>
+        </div>
+
+      </div>
+    </div>
+
+    <div class="footnote">Backend: <strong>Flask on EC2</strong> &middot; Storage: <strong>Amazon S3</strong> &middot; Runtimes: <strong>python3</strong> / <strong>javac + java</strong></div>
+
+  </div>
+
+<script>
+  const samples = {
+    python: 'print("Hello, world!")',
+    java: 'public class Main {\n    public static void main(String[] args) {\n        System.out.println("Hello, world!");\n    }\n}'
+  };
+  const titles = {
+    python: 'python3 &middot; script.py',
+    java: 'javac &middot; Main.java'
+  };
+
+  const codeEl = document.getElementById('code');
+  const gutterEl = document.getElementById('gutter');
+
+  function updateGutter() {
+    const lines = codeEl.value.split('\n').length;
+    let out = '';
+    for (let i = 1; i <= lines; i++) out += i + '\n';
+    gutterEl.textContent = out.trim();
+  }
+  codeEl.addEventListener('input', updateGutter);
+  codeEl.addEventListener('scroll', () => { gutterEl.scrollTop = codeEl.scrollTop; });
+
+  function setLanguage(lang) {
+    document.body.setAttribute('data-lang', lang);
+    document.getElementById('tabPython').classList.toggle('active', lang === 'python');
+    document.getElementById('tabJava').classList.toggle('active', lang === 'java');
+    document.getElementById('chromeTitle').innerHTML = titles[lang];
+    codeEl.value = samples[lang];
+    updateGutter();
+  }
+
+  function resetPipeline() {
+    ['stage-execute', 'stage-verify', 'stage-persist'].forEach(id => {
+      document.getElementById(id).classList.remove('active', 'done', 'fail');
+    });
+  }
+
+  function setStage(id, state) {
+    document.getElementById(id).classList.add(state);
+  }
+
+  const icons = {
+    success: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>',
+    error: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 6L6 18M6 6l12 12"/></svg>'
+  };
+
+  async function runCode() {
+    const language = document.body.getAttribute('data-lang');
+    const code = codeEl.value;
+    const runBtn = document.getElementById('runBtn');
+    const resultBox = document.getElementById('resultBox');
+    const statusIcon = document.getElementById('statusIcon');
+    const statusLine = document.getElementById('statusLine');
+    const statusSub = document.getElementById('statusSub');
+    const outputBox = document.getElementById('outputBox');
+    const bucketBadge = document.getElementById('bucketBadge');
+    const beamTrack = document.getElementById('beamTrack');
+
+    runBtn.disabled = true;
+    runBtn.querySelector('svg').style.display = 'none';
+    resultBox.classList.remove('show', 'success', 'error');
+    beamTrack.classList.remove('show');
+    bucketBadge.classList.remove('uploading');
+    resetPipeline();
+    setStage('stage-execute', 'active');
+
+    await new Promise(r => setTimeout(r, 250));
+
+    try {
+      const res = await fetch('/run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ language, code })
+      });
+      const data = await res.json();
+
+      document.getElementById('stage-execute').classList.remove('active');
+      setStage('stage-execute', 'done');
+      setStage('stage-verify', data.success ? 'done' : 'fail');
+
+      resultBox.classList.add('show', data.success ? 'success' : 'error');
+      statusIcon.innerHTML = data.success ? icons.success : icons.error;
+      statusLine.textContent = data.message;
+      statusSub.textContent = data.success
+        ? 'exit code 0 &middot; ' + language
+        : 'execution failed &middot; nothing stored';
+      outputBox.textContent = data.output || '(no output)';
+
+      if (data.success) {
+        setStage('stage-persist', 'active');
+        bucketBadge.classList.add('uploading');
+        await new Promise(r => setTimeout(r, 500));
+        setStage('stage-persist', 'done');
+        beamTrack.classList.add('show');
+      } else {
+        setStage('stage-persist', 'fail');
+      }
+    } catch (err) {
+      resetPipeline();
+      setStage('stage-execute', 'fail');
+      resultBox.classList.add('show', 'error');
+      statusIcon.innerHTML = icons.error;
+      statusLine.textContent = 'Request failed';
+      statusSub.textContent = err.message;
+      outputBox.textContent = '';
+    } finally {
+      runBtn.disabled = false;
+      runBtn.querySelector('svg').style.display = '';
+    }
+  }
+
+  updateGutter();
+</script>
+</body>
+</html>
