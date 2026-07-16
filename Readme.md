@@ -1,126 +1,127 @@
-# Cloud Code Runner (Python + Java → EC2 → S3)
+Cloud Code Runner (Python & Java on AWS)
 
-A minimal web app: paste Python or Java code in the browser, it runs on the
-EC2 server, and — **only if it runs successfully** — the source file is
-uploaded to S3 with its correct extension (`.py` / `.java`). The UI shows a
-success message with the program's output, or an error message if it failed
-(nothing is uploaded on failure).
+Cloud Code Runner is a web-based application that allows users to write and execute Python and Java code directly from the browser. The application runs code on an AWS EC2 instance and automatically uploads only successfully executed source files (.py and .java) to Amazon S3.
 
-Tested locally end-to-end (success + error cases, both languages) before
-handing off.
+🚀 Features
+-Execute Python and Java code online
+-Real-time code execution using Flask
+-Upload successful source files to Amazon S3
+-Automatic Java class detection
+-Modern responsive UI
+-Temporary files cleaned after execution
+-CI/CD using GitHub, AWS CodeBuild & CodePipeline
 
-## Project structure
-```
+
+☁️ AWS Services Used
+Amazon EC2
+Amazon S3
+AWS IAM
+AWS CodeBuild
+AWS CodePipeline
+GitHub
+
+
+💻 Technologies
+Python
+Flask
+HTML, CSS, JavaScript
+Java (JDK)
+Boto3
+Git & GitHub
+Ubuntu Linux
+
+  📂 Project Workflow
+  User
+   ↓
+  Web UI
+   ↓
+  Flask API (/run)
+   ↓
+  Execute Python / Java
+   ↓
+  Success?
+  ┌───────────────┐
+  │               │
+  Yes             No
+  │               │
+  ▼               ▼
+  Upload to S3   Show Error
+
+
+📁 Project Structure
 code-runner-app/
-├── app.py                 # Flask backend: run code, upload to S3
+├── app.py
 ├── requirements.txt
+├── buildspec.yml
 ├── templates/
-│   └── index.html          # UI
+│   └── index.html
 └── static/
     └── style.css
-```
 
-## 1. Create the S3 bucket
-```bash
-aws s3 mb s3://YOUR-BUCKET-NAME --region us-east-1
-```
 
-## 2. Launch the EC2 instance
-- AMI: **Ubuntu 24.04 LTS**
-- Instance type: `t2.micro` (free tier is fine)
-- Security group: allow inbound **TCP 22** (SSH, your IP) and **TCP 5000**
-  (or 80 if you put Nginx in front)
+🔐 Security
+-IAM Role for S3 access
+-No AWS Access Keys stored
+-Only successful code is uploaded
+-Temporary files removed after execution
+-Execution timeout enabled
 
-### IAM role (important — don't use access keys on the instance)
-Create an IAM role with a policy like this and attach it to the instance:
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Action": ["s3:PutObject"],
-      "Resource": "arn:aws:s3:::YOUR-BUCKET-NAME/*"
-    }
-  ]
-}
-```
 
-## 3. SSH in and install dependencies
-```bash
-ssh -i your-key.pem ubuntu@<EC2_PUBLIC_IP>
+🚀 CI/CD
+  GitHub Repository
+        │
+        ▼
+  AWS CodePipeline
+        │
+        ▼
+  AWS CodeBuild
+        │
+        ▼
+  Build Artifacts stored in Amazon S3
 
-sudo apt update
-sudo apt install -y python3-pip python3-venv default-jdk-headless git
-java -version   # sanity check javac/java exist
-```
 
-## 4. Get the app onto the instance
-Copy the `code-runner-app` folder to the instance (e.g. `scp -r`, or push it
-to a git repo and `git clone` it), then:
-```bash
-cd code-runner-app
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-```
+📈 Future Enhancements
+-Docker sandbox execution
+-User authentication
+-More programming languages
+-DynamoDB execution history
+-Auto Scaling & Load Balancer
 
-## 5. Configure environment variables
-```bash
-export S3_BUCKET_NAME=YOUR-BUCKET-NAME
-export AWS_REGION=us-east-1
-```
-(Add these to `~/.bashrc` or, better, to the systemd service below so they
-persist.)
 
-## 6. Run it
+👨‍💻 Author
+Nilesh Rajendra Pardeshi
 
-**Quick test:**
-```bash
-python3 app.py
-# visit http://<EC2_PUBLIC_IP>:5000
-```
+- B.Tech – Artificial Intelligence & Machine Learning
+- R. C. Patel Institute of Technology, Shirpur
+- AWS with Python Course Trainee (Symbiosis, Sponsored by Capgemini)
 
-**Production (gunicorn + systemd), recommended:**
-```bash
-sudo tee /etc/systemd/system/coderunner.service > /dev/null <<'EOF'
-[Unit]
-Description=Cloud Code Runner
-After=network.target
+⭐ Summary
 
-[Service]
-User=ubuntu
-WorkingDirectory=/home/ubuntu/code-runner-app
-Environment="S3_BUCKET_NAME=YOUR-BUCKET-NAME"
-Environment="AWS_REGION=us-east-1"
-ExecStart=/home/ubuntu/code-runner-app/venv/bin/gunicorn -w 2 -b 0.0.0.0:5000 app:app
-Restart=always
+A cloud-based compiler that executes Python and Java programs on AWS EC2, securely stores successful source files in Amazon S3, and integrates GitHub, CodeBuild, and CodePipeline for automated CI/CD.
 
-[Install]
-WantedBy=multi-user.target
-EOF
+📈Project ScreenShots
+if code successfully executes in compiler
 
-sudo systemctl daemon-reload
-sudo systemctl enable --now coderunner
-sudo systemctl status coderunner
-```
 
-Visit `http://<EC2_PUBLIC_IP>:5000` in your browser.
+![alt text](image.png)
 
-## How it works
-1. UI sends `{language, code}` to `POST /run`.
-2. Backend writes the code to a temp file (`.py`, or `<PublicClass>.java`),
-   then runs it with `python3` or `javac`+`java` (10s timeout).
-3. **Exit code 0 (and, for Java, successful compile)** → file is uploaded to
-   `s3://BUCKET/python/...` or `s3://BUCKET/java/...`, and the UI shows a
-   success message plus the program's stdout.
-4. **Any error / non-zero exit / compile failure** → nothing is uploaded,
-   and the UI shows the error message (stderr) instead.
-5. Temp files/directories are always cleaned up afterward.
 
-## Security note
-This app executes arbitrary code with `subprocess`, which is fine for a demo
-or trusted internal tool but is **not sandboxed** (no container/user
-isolation, no resource limits beyond a timeout). Don't expose it publicly
-without adding real isolation (e.g. run inside Docker with `--network none`
-and a restricted user, or use AWS Lambda/Fargate per-execution containers).
+![alt text](image-1.png)
+
+
+![alt text](image-2.png)
+
+
+if code not exceuted
+
+
+![alt text](image-3.png)
+
+
+successfully executed code is stored in S3 bucket with proper file name and extensions
+
+
+![alt text](image-4.png)
+
+
+![alt text](image-5.png)
