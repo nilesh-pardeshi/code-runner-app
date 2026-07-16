@@ -103,25 +103,25 @@ A cloud-based compiler that executes Python and Java programs on AWS EC2, secure
 if code successfully executes in compiler
 
 
-![alt text](image.png)
+![Home Page](image.png)
 
 
-![alt text](image-1.png)
+![Successfull Run](image-1.png)
 
 
-![alt text](image-2.png)
+![Successful Output](image-2.png)
 
 
 if code not exceuted
 
 
-![alt text](image-3.png)
+![Error](image-3.png)
 
 
 successfully executed code is stored in S3 bucket with proper file name and extensions
 
 
-![alt text](image-4.png)
+![S3 Bucket](image-4.png)
 
 
-![alt text](image-5.png)
+![Python and Java Files](image-5.png)
